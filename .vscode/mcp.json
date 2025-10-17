@@ -13,7 +13,6 @@
         "run",
         "C:\\Users\\ljohny\\genai\\matlab-mcp\\main.py"
       ],
-      "cwd": "C:\\Users\\ljohny\\miniconda3\\envs\\mcp\\",
       "env": {
         "UV_LINK_MODE": "copy"
       }
