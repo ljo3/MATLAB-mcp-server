@@ -16,7 +16,7 @@ A Model Context Protocol (MCP) server that provides AI assistants with the abili
 Before setting up the MATLAB MCP server, ensure you have:
 
 1. **MATLAB Installation**: A working MATLAB installation with Python engine support
-2. **Miniconda/Anaconda**: For Python environment management
+2. **uv**: Modern Python package manager (install from https://docs.astral.sh/uv/)
 3. **VS Code**: With MCP extension for testing (optional but recommended)
 
 ## 🛠️ Installation & Setup
@@ -33,20 +33,19 @@ git clone <your-repo-url> matlab-mcp
 cd matlab-mcp
 ```
 
-### 2. Set Up Conda Environment
+### 2. Set Up uv Environment
 
-Create a dedicated Python environment for the MCP server:
+Initialize the project with uv and install dependencies:
 
 ```bash
-# Create environment with Python 3.11
-conda create -n mcp python=3.11
+# Initialize uv project (if not already done)
+uv init
 
-# Activate the environment
-conda activate mcp
+# Install MCP CLI as a dependency
+uv add 'mcp[cli]'
 
-# Install required packages
-pip install uv
-uv pip install mcp[cli]
+# Alternatively, install directly without project setup
+# uv pip install mcp[cli]
 ```
 
 ### 3. Configure MATLAB Python Engine
@@ -87,10 +86,8 @@ Create `.vscode/mcp.json` for VS Code integration:
   "servers": {
     "MATLAB": {
       "type": "stdio",
-      "command": "C:\\Users\\<username>\\miniconda3\\envs\\mcp\\python.exe",
+      "command": "uv",
       "args": [
-        "-m",
-        "uv",
         "run",
         "--with",
         "mcp[cli]",
@@ -98,6 +95,7 @@ Create `.vscode/mcp.json` for VS Code integration:
         "run",
         "C:\\Users\\<username>\\path\\to\\matlab-mcp\\main.py"
       ],
+      "cwd": "C:\\Users\\<username>\\path\\to\\matlab-mcp",
       "env": {
         "UV_LINK_MODE": "copy"
       }
@@ -125,11 +123,11 @@ Ensure your `main.py` file (the MCP server implementation) is in the root of you
 #### Via Command Line
 
 ```bash
-# Activate conda environment
-conda activate mcp
-
-# Run the server
+# Run the server with uv
 uv run --with mcp[cli] mcp run main.py
+
+# Or if you have a pyproject.toml with mcp[cli] as dependency
+uv run mcp run main.py
 ```
 
 ### Available Tools
@@ -234,9 +232,10 @@ Show me the MATLAB coding guidelines
 
 3. **Server Won't Start**
 
-   - Verify conda environment is activated
-   - Check that all dependencies are installed
+   - Verify uv is installed and available in PATH
+   - Check that MCP CLI dependency is installed (`uv add 'mcp[cli]'`)
    - Ensure `main.py` path in `mcp.json` is correct
+   - Verify the `cwd` path in `mcp.json` points to your project directory
 
 4. **Files Created in Wrong Location**
    - Check the working directory when server starts
@@ -269,3 +268,18 @@ def get_resource(param: str) -> str:
 ```
 
 **Note**: This MCP server requires a valid MATLAB installation and license to function properly. Ensure MATLAB is properly configured and accessible before using the server.
+
+initialization in codespaces
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.cargo/env # install uv and add it to your PATH. After installation, restart your terminal or run:
+uv --version
+
+uv init
+uv venv
+chmod +x .venv/bin/activate
+
+uv cache clean --force
+uv add mcp --reinstall
+
+uv pip install matlabengine
