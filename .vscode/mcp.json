@@ -2,18 +2,16 @@
   "servers": {
     "MATLAB": {
       "type": "stdio",
-      "command": "uv",
+      "command": "python",
       "args": [
-        "run",
-        "--with",
-        "mcp[cli]",
+        "-m",
         "mcp",
         "run",
-        "C:\\Users\\ljohny\\genai\\matlab-mcp\\main.py"
+        "/workspaces/matlab-mcp/main.py"
       ],
-      "cwd": "C:\\Users\\ljohny\\genai\\matlab-mcp",
+      "cwd": "/workspaces/matlab-mcp",
       "env": {
-        "UV_LINK_MODE": "copy"
+        "MATLAB_PATH": "/opt/matlab/R2023b"
       }
     }
   }
