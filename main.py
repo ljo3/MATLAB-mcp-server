@@ -212,6 +212,51 @@ class MATLABExecutor:
             raise RuntimeError(f"MATLAB execution error: {str(e)}")
         
         return result
+    
+    def run_file(self, file_path: str, args: Optional[Dict[str, Any]] = None) -> dict:
+        """Execute a MATLAB file (.m file) and return results.
+        
+        Args:
+            file_path: Path to the MATLAB file to execute (with or without .m extension)
+            args: Optional dictionary of arguments to pass to the script/function
+        
+        Returns:
+            Dictionary containing execution results, output, figures, and workspace variables
+        """
+        # Normalize file path
+        if not file_path.endswith('.m'):
+            file_path += '.m'
+        
+        matlab_file = Path(file_path)
+        if not matlab_file.is_absolute():
+            matlab_file = self.matlab_dir / matlab_file
+        
+        if not matlab_file.exists():
+            raise FileNotFoundError(f"MATLAB file not found: {matlab_file}")
+        
+        file_name = matlab_file.stem
+        result = {}
+        
+        try:
+            # Read the file to determine if it's a function or script
+            content = matlab_file.read_text()
+            is_function = content.strip().startswith('function')
+            
+            if is_function:
+                # It's a function - call it with arguments
+                if args:
+                    args_list = [args[k] for k in sorted(args.keys())] if isinstance(args, dict) else [args]
+                else:
+                    args_list = []
+                result = self.call_function(file_name, args_list)
+            else:
+                # It's a script - execute it
+                result = self.execute_script(file_name, args)
+                
+        except Exception as e:
+            result['error'] = f"MATLAB file execution error: {str(e)}"
+        
+        return result
 
 
 # Initialize manager and executor
@@ -307,40 +352,7 @@ def run_matlab_file(file_path: str, args: Optional[Dict[str, Any]] = None) -> di
     Returns:
         Dictionary containing execution results, output, figures, and workspace variables
     """
-    # Normalize file path
-    if not file_path.endswith('.m'):
-        file_path += '.m'
-    
-    matlab_file = Path(file_path)
-    if not matlab_file.is_absolute():
-        matlab_file = MATLAB_DIR / matlab_file
-    
-    if not matlab_file.exists():
-        raise FileNotFoundError(f"MATLAB file not found: {matlab_file}")
-    
-    file_name = matlab_file.stem
-    result = {}
-    
-    try:
-        # Read the file to determine if it's a function or script
-        content = matlab_file.read_text()
-        is_function = content.strip().startswith('function')
-        
-        if is_function:
-            # It's a function - call it with arguments
-            if args:
-                args_list = [args[k] for k in sorted(args.keys())] if isinstance(args, dict) else [args]
-            else:
-                args_list = []
-            result = executor.call_function(file_name, args_list)
-        else:
-            # It's a script - execute it
-            result = executor.execute_script(file_name, args)
-            
-    except Exception as e:
-        result['error'] = f"MATLAB file execution error: {str(e)}"
-    
-    return result
+    return executor.run_file(file_path, args)
 
 
 @mcp.tool()
@@ -419,7 +431,7 @@ def run_matlab_test_file(test_file_path: str, test_options: Optional[Dict[str, A
 
 
 @mcp.tool()
-def create_matlab_file(filename: str, code: str) -> str:
+def create_matlab_file(filename: str, code: str) -> dict:
     """Create a new MATLAB file with the specified code.
     
     IMPORTANT: Before creating MATLAB code, use the 'matlab_coding_guidelines' prompt
@@ -430,8 +442,11 @@ def create_matlab_file(filename: str, code: str) -> str:
         code: MATLAB code to write to the file
     
     Returns:
-        Path to the created file
+        Dictionary with debugging information and path to the created file
     """
+    import os
+    from pathlib import Path
+    
     # Add .m extension if not present
     if not filename.endswith('.m'):
         filename += '.m'
@@ -445,14 +460,41 @@ def create_matlab_file(filename: str, code: str) -> str:
     MATLAB_DIR.mkdir(parents=True, exist_ok=True)
     file_path = MATLAB_DIR / filename
     
+    debug_info = {
+        'filename': filename,
+        'matlab_dir': str(MATLAB_DIR),
+        'matlab_dir_absolute': str(MATLAB_DIR.absolute()),
+        'file_path': str(file_path),
+        'file_path_absolute': str(file_path.absolute()),
+        'matlab_dir_exists': MATLAB_DIR.exists(),
+        'cwd': os.getcwd(),
+        'code_length': len(code)
+    }
+    
     # Write code to file using Python's built-in file operations
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(code)
+        
+        debug_info['file_created'] = True
+        debug_info['file_exists_after_write'] = file_path.exists()
+        
+        # Try to read back the file to verify
+        if file_path.exists():
+            with open(file_path, 'r', encoding='utf-8') as f:
+                read_content = f.read()
+            debug_info['content_matches'] = read_content == code
+            debug_info['read_content_length'] = len(read_content)
+        else:
+            debug_info['content_matches'] = False
+            debug_info['read_content_length'] = 0
+            
     except Exception as e:
-        raise RuntimeError(f"Failed to write MATLAB file: {str(e)}")
+        debug_info['error'] = f"Failed to write MATLAB file: {str(e)}"
+        debug_info['file_created'] = False
+        debug_info['file_exists_after_write'] = False
     
-    return str(file_path)
+    return debug_info
 
 
 @mcp.tool()
