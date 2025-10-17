@@ -2,10 +2,8 @@
   "servers": {
     "MATLAB": {
       "type": "stdio",
-      "command": "C:\\Users\\ljohny\\miniconda3\\envs\\mcp\\python.exe",
+      "command": "uv",
       "args": [
-        "-m",
-        "uv",
         "run",
         "--with",
         "mcp[cli]",
@@ -13,6 +11,7 @@
         "run",
         "C:\\Users\\ljohny\\genai\\matlab-mcp\\main.py"
       ],
+      "cwd": "C:\\Users\\ljohny\\genai\\matlab-mcp",
       "env": {
         "UV_LINK_MODE": "copy"
       }
