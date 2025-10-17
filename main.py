@@ -293,33 +293,7 @@ def evaluate_matlab_code(code: str, variables: Optional[Dict[str, Any]] = None) 
     Returns:
         Dictionary containing evaluation results, output, figures, and workspace variables
     """
-    result = {}
-    
-    try:
-        # Clear workspace and close figures
-        executor.eng.eval('clear all', nargout=0)
-        executor.eng.close('all', nargout=0)
-        
-        # Set input variables if provided
-        if variables:
-            matlab_vars = executor._convert_to_matlab_types(variables)
-            for var_name, var_value in matlab_vars.items():
-                executor.eng.workspace[var_name] = var_value
-        
-        # Execute code with output capture
-        with executor._output_capture('eval') as temp_file:
-            output = executor.eng.eval(code, nargout=1)
-        
-        result['output'] = str(output) if output is not None else 'No output'
-        result['printed_output'] = executor._read_captured_output(temp_file)
-        result['figures'] = executor._capture_figures()
-        result.update(executor._get_workspace_variables())
-        
-    except Exception as e:
-        result['error'] = f"MATLAB evaluation error: {str(e)}"
-        result['output'] = None
-    
-    return result
+    return executor.execute_script(code, variables)
 
 
 @mcp.tool()
@@ -467,11 +441,16 @@ def create_matlab_file(filename: str, code: str) -> str:
     if not file_stem.replace('_', '').isalnum():
         raise ValueError("Filename must contain only letters, numbers, and underscores")
     
-    # Create file path
+    # Create file path - ensure MATLAB_DIR exists
+    MATLAB_DIR.mkdir(parents=True, exist_ok=True)
     file_path = MATLAB_DIR / filename
     
-    # Write code to file
-    file_path.write_text(code, encoding='utf-8')
+    # Write code to file using Python's built-in file operations
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(code)
+    except Exception as e:
+        raise RuntimeError(f"Failed to write MATLAB file: {str(e)}")
     
     return str(file_path)
 
