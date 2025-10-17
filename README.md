@@ -283,3 +283,46 @@ uv cache clean --force
 uv add mcp --reinstall
 
 uv pip install matlabengine
+
+
+ 1  curl -LsSf https://astral.sh/uv/install.sh | sh
+    2  pwd
+    3  python
+    4  uv run main.py
+    5  uv add mcp
+    6  uv init
+    7  uv add mcp
+    8  uv run main.py
+    9  echo $MATLAB_PATH
+   10  export MATLAB_PATH="/opt/matlab/R2025b"
+   11  echo $MATLAB_PATH
+   12  uv run main.py
+   13  python -m pip install setuptools
+   14  python -m pip install setuptools --break-system-packages
+   15  uv run main.py
+   16  pip install mcp
+   17  pip install mcp --break-system-packages
+   18  export MATLAB_PATH="/opt/matlab/R2025b"
+   19  python -m mcp run main.py
+   20  which mcp
+   21  mcp run main.py
+   22  pip install mcp[cli]
+   23  pip install mcp[cli] --break-system-packages
+   24  pip install mcp[cli]
+   25  mcp run main.py
+   26  history
+
+
+   class MATLABEngineManager:
+    """Manages MATLAB engine initialization and lifecycle."""
+    
+    def __init__(self):
+        self._engine = None
+        self._initialize()
+    
+    def _initialize(self):
+        """Initialize MATLAB engine with proper error handling."""
+        self._ensure_matlab_engine_installed()
+        import matlab.engine
+        self._engine = matlab.engine.connect_matlab("MATLAB_3616")
+        self._engine.addpath(str(MATLAB_DIR))

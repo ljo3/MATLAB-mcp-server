@@ -2,16 +2,14 @@
   "servers": {
     "MATLAB": {
       "type": "stdio",
-      "command": "python",
+      "command": "mcp",
       "args": [
-        "-m",
-        "mcp",
         "run",
-        "/workspaces/matlab-mcp/main.py"
+        "/workspaces/MATLAB-mcp-server/main.py"
       ],
-      "cwd": "/workspaces/matlab-mcp",
+      "cwd": "/workspaces/MATLAB-mcp-server",
       "env": {
-        "MATLAB_PATH": "/opt/matlab/R2023b"
+        "MATLAB_PATH": "/opt/matlab/R2025b"
       }
     }
   }

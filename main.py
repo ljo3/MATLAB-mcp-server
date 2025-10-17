@@ -33,7 +33,7 @@ class MATLABEngineManager:
         """Initialize MATLAB engine with proper error handling."""
         self._ensure_matlab_engine_installed()
         import matlab.engine
-        self._engine = matlab.engine.start_matlab()
+        self._engine = matlab.engine.connect_matlab("MATLAB_3616")
         self._engine.addpath(str(MATLAB_DIR))
     
     def _ensure_matlab_engine_installed(self):
