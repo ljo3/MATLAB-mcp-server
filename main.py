@@ -223,74 +223,344 @@ executor = MATLABExecutor(engine_manager)
 # MCP Tool Definitions
 
 @mcp.tool()
-def create_script(script_name: str, code: str) -> str:
-    """Create a new MATLAB script file.
+def check_matlab_code(code: str) -> dict:
+    """Check MATLAB code syntax and structure without executing it.
     
     Args:
-        script_name: Name of the script (without .m extension)
-        code: MATLAB code to save
+        code: MATLAB code to check
     
     Returns:
-        Path to the created script
+        Dictionary containing syntax check results, warnings, and suggestions
     """
-    if not script_name.isidentifier():
-        raise ValueError("Script name must be a valid MATLAB identifier")
+    result = {
+        'syntax_valid': True,
+        'warnings': [],
+        'suggestions': [],
+        'line_count': 0
+    }
     
-    script_path = MATLAB_DIR / f"{script_name}.m"
-    script_path.write_text(code)
+    try:
+        lines = code.strip().split('\n')
+        result['line_count'] = len(lines)
+        
+        # Basic syntax checks
+        for i, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line or line.startswith('%'):
+                continue
+                
+            # Check for common syntax issues
+            if line.count('(') != line.count(')'):
+                result['warnings'].append(f"Line {i}: Unmatched parentheses")
+            if line.count('[') != line.count(']'):
+                result['warnings'].append(f"Line {i}: Unmatched square brackets")
+            if line.count('{') != line.count('}'):
+                result['warnings'].append(f"Line {i}: Unmatched curly braces")
+            
+            # Check for missing semicolons on assignments
+            if '=' in line and not line.endswith(';') and not line.endswith('...'):
+                if not any(keyword in line for keyword in ['if', 'for', 'while', 'function', 'else', 'elseif']):
+                    result['suggestions'].append(f"Line {i}: Consider adding semicolon to suppress output")
+        
+        # Use MATLAB engine for more detailed syntax checking
+        temp_file = MATLAB_DIR / "temp_syntax_check.m"
+        temp_file.write_text(code)
+        
+        try:
+            # Try to parse the code without executing
+            executor.eng.eval(f"checkcode('{temp_file}', '-string')", nargout=0)
+        except Exception as e:
+            result['syntax_valid'] = False
+            result['warnings'].append(f"MATLAB syntax error: {str(e)}")
+        finally:
+            temp_file.unlink(missing_ok=True)
+            
+    except Exception as e:
+        result['syntax_valid'] = False
+        result['warnings'].append(f"Code analysis error: {str(e)}")
     
-    return str(script_path)
+    return result
 
 
 @mcp.tool()
-def create_function(function_name: str, code: str) -> str:
-    """Create a new MATLAB function file.
+def evaluate_matlab_code(code: str, variables: Optional[Dict[str, Any]] = None) -> dict:
+    """Evaluate MATLAB code expressions and return results.
     
     Args:
-        function_name: Name of the function (without .m extension)
-        code: MATLAB function code including function definition
+        code: MATLAB code to evaluate
+        variables: Optional dictionary of variables to set in workspace before evaluation
     
     Returns:
-        Path to the created function file
+        Dictionary containing evaluation results, output, figures, and workspace variables
     """
-    if not function_name.isidentifier():
-        raise ValueError("Function name must be a valid MATLAB identifier")
+    result = {}
     
-    if not code.strip().startswith('function'):
-        raise ValueError("Code must start with function definition")
+    try:
+        # Clear workspace and close figures
+        executor.eng.eval('clear all', nargout=0)
+        executor.eng.close('all', nargout=0)
+        
+        # Set input variables if provided
+        if variables:
+            matlab_vars = executor._convert_to_matlab_types(variables)
+            for var_name, var_value in matlab_vars.items():
+                executor.eng.workspace[var_name] = var_value
+        
+        # Execute code with output capture
+        with executor._output_capture('eval') as temp_file:
+            output = executor.eng.eval(code, nargout=1)
+        
+        result['output'] = str(output) if output is not None else 'No output'
+        result['printed_output'] = executor._read_captured_output(temp_file)
+        result['figures'] = executor._capture_figures()
+        result.update(executor._get_workspace_variables())
+        
+    except Exception as e:
+        result['error'] = f"MATLAB evaluation error: {str(e)}"
+        result['output'] = None
     
-    function_path = MATLAB_DIR / f"{function_name}.m"
-    function_path.write_text(code)
-    
-    return str(function_path)
+    return result
 
 
 @mcp.tool()
-def execute_script(script_name: str, args: Optional[Dict[str, Any]] = None) -> dict:
-    """Execute a MATLAB script and return results.
+def run_matlab_file(file_path: str, args: Optional[Dict[str, Any]] = None) -> dict:
+    """Execute a MATLAB file (.m file) and return results.
     
     Args:
-        script_name: Name of the script to execute (without .m extension)
-        args: Optional dictionary of arguments to pass to the script
+        file_path: Path to the MATLAB file to execute (with or without .m extension)
+        args: Optional dictionary of arguments to pass to the script/function
     
     Returns:
-        Dictionary containing printed output, figures, and workspace variables
+        Dictionary containing execution results, output, figures, and workspace variables
     """
-    return executor.execute_script(script_name, args)
+    # Normalize file path
+    if not file_path.endswith('.m'):
+        file_path += '.m'
+    
+    matlab_file = Path(file_path)
+    if not matlab_file.is_absolute():
+        matlab_file = MATLAB_DIR / matlab_file
+    
+    if not matlab_file.exists():
+        raise FileNotFoundError(f"MATLAB file not found: {matlab_file}")
+    
+    file_name = matlab_file.stem
+    result = {}
+    
+    try:
+        # Read the file to determine if it's a function or script
+        content = matlab_file.read_text()
+        is_function = content.strip().startswith('function')
+        
+        if is_function:
+            # It's a function - call it with arguments
+            if args:
+                args_list = [args[k] for k in sorted(args.keys())] if isinstance(args, dict) else [args]
+            else:
+                args_list = []
+            result = executor.call_function(file_name, args_list)
+        else:
+            # It's a script - execute it
+            result = executor.execute_script(file_name, args)
+            
+    except Exception as e:
+        result['error'] = f"MATLAB file execution error: {str(e)}"
+    
+    return result
 
 
 @mcp.tool()
-def call_function(function_name: str, args: List[Any]) -> dict:
-    """Call a MATLAB function with arguments.
+def run_matlab_test_file(test_file_path: str, test_options: Optional[Dict[str, Any]] = None) -> dict:
+    """Run a MATLAB test file with appropriate test handling.
     
     Args:
-        function_name: Name of the function to call (without .m extension)
-        args: List of arguments to pass to the function
+        test_file_path: Path to the MATLAB test file to run
+        test_options: Optional dictionary of test options (e.g., verbose, output_detail)
     
     Returns:
-        Dictionary containing function output, printed output, and figures
+        Dictionary containing test results, passed/failed tests, and detailed output
     """
-    return executor.call_function(function_name, args)
+    # Normalize file path
+    if not test_file_path.endswith('.m'):
+        test_file_path += '.m'
+    
+    test_file = Path(test_file_path)
+    if not test_file.is_absolute():
+        test_file = MATLAB_DIR / test_file
+    
+    if not test_file.exists():
+        raise FileNotFoundError(f"Test file not found: {test_file}")
+    
+    test_name = test_file.stem
+    result = {
+        'test_name': test_name,
+        'passed': 0,
+        'failed': 0,
+        'total': 0,
+        'test_details': [],
+        'output': ''
+    }
+    
+    try:
+        # Clear workspace and close figures
+        executor.eng.close('all', nargout=0)
+        
+        # Run the test using MATLAB's testing framework
+        with executor._output_capture('test') as temp_file:
+            try:
+                # Try to run as a test class or function
+                test_result = executor.eng.eval(f"runtests('{test_name}')", nargout=1)
+                
+                # Extract test results if available
+                if hasattr(test_result, 'Passed'):
+                    result['passed'] = sum(test_result.Passed)
+                    result['failed'] = sum(test_result.Failed)
+                    result['total'] = len(test_result.Passed)
+                    
+                    # Get detailed results
+                    for i, (name, passed, failed) in enumerate(zip(
+                        getattr(test_result, 'Name', []),
+                        test_result.Passed,
+                        test_result.Failed
+                    )):
+                        result['test_details'].append({
+                            'name': str(name),
+                            'passed': bool(passed),
+                            'failed': bool(failed)
+                        })
+                        
+            except Exception:
+                # Fallback: run as regular script and look for test patterns
+                executor.eng.eval(test_name, nargout=0)
+                result['output'] = 'Test executed as script (no formal test framework detected)'
+        
+        result['output'] += executor._read_captured_output(temp_file)
+        result['figures'] = executor._capture_figures()
+        
+    except Exception as e:
+        result['error'] = f"Test execution error: {str(e)}"
+        result['output'] = str(e)
+    
+    return result
+
+
+@mcp.tool()
+def create_matlab_file(filename: str, code: str) -> str:
+    """Create a new MATLAB file with the specified code.
+    
+    IMPORTANT: Before creating MATLAB code, use the 'matlab_coding_guidelines' prompt
+    to ensure the code follows proper MATLAB conventions and best practices.
+    
+    Args:
+        filename: Name of the MATLAB file (with or without .m extension)
+        code: MATLAB code to write to the file
+    
+    Returns:
+        Path to the created file
+    """
+    # Add .m extension if not present
+    if not filename.endswith('.m'):
+        filename += '.m'
+    
+    # Validate filename
+    file_stem = filename[:-2]  # Remove .m extension
+    if not file_stem.replace('_', '').isalnum():
+        raise ValueError("Filename must contain only letters, numbers, and underscores")
+    
+    # Create file path
+    file_path = MATLAB_DIR / filename
+    
+    # Write code to file
+    file_path.write_text(code, encoding='utf-8')
+    
+    return str(file_path)
+
+
+@mcp.tool()
+def detect_matlab_toolboxes() -> dict:
+    """Detect which MATLAB toolboxes are installed using ver command.
+    
+    Returns:
+        Dictionary containing the raw output from MATLAB's ver command
+    """
+    result = {}
+    
+    try:
+        # Get the raw ver output
+        with executor._output_capture('ver') as temp_file:
+            executor.eng.eval('ver', nargout=0)
+        
+        ver_output = executor._read_captured_output(temp_file)
+        result['ver_output'] = ver_output
+        
+    except Exception as e:
+        result['error'] = f"Error getting ver output: {str(e)}"
+    
+    return result
+
+
+@mcp.prompt()
+def matlab_coding_guidelines() -> str:
+    """MATLAB coding guidelines and best practices for file creation.
+    
+    Returns comprehensive guidelines for writing clean, maintainable MATLAB code.
+    """
+    return """
+MATLAB Coding Guidelines:
+
+1. NAMING CONVENTIONS:
+   - Functions: camelCase (e.g., calculateMean, plotResults)
+   - Variables: descriptive names (e.g., sampleRate, inputData)
+   - Constants: UPPER_CASE (e.g., MAX_ITERATIONS)
+
+2. FUNCTION STRUCTURE:
+   - Start with function signature: function [out1, out2] = myFunction(in1, in2)
+   - Add help text immediately after function line
+   - Include input validation
+   - Use meaningful variable names
+
+3. DOCUMENTATION:
+   - Add help text for all functions
+   - Comment complex algorithms
+   - Include examples in help text
+
+4. ERROR HANDLING:
+   - Validate inputs using nargin, isa(), size()
+   - Use meaningful error messages
+   - Handle edge cases
+
+5. CODE STYLE:
+   - Use consistent indentation
+   - Add semicolons to suppress output
+   - Group related code with blank lines
+   - Avoid magic numbers, use named constants
+
+Example function template:
+function result = processData(inputData, threshold)
+    %PROCESSDATA Process input data with given threshold
+    %   result = processData(inputData, threshold) processes the input
+    %   data and returns the result based on the threshold.
+    %
+    %   Inputs:
+    %       inputData - numeric array of data points
+    %       threshold - scalar threshold value
+    %
+    %   Output:
+    %       result - processed data array
+    
+    % Input validation
+    if nargin < 2
+        error('Two inputs required: inputData and threshold');
+    end
+    
+    if ~isnumeric(inputData)
+        error('inputData must be numeric');
+    end
+    
+    % Main processing
+    result = inputData(inputData > threshold);
+end
+"""
 
 
 @mcp.resource("matlab://scripts/{script_name}")
