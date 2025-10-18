@@ -18,8 +18,8 @@ MATLAB_PATH = os.getenv('MATLAB_PATH')
 MATLAB_DIR = Path("src")
 MAX_OUTPUT_LENGTH = 1000
 
-# Initialize FastMCP server
-mcp = FastMCP("MATLAB", dependencies=["mcp[cli]"])
+# Initialize FastMCP server with SSE support
+mcp = FastMCP("MATLAB", dependencies=["mcp[cli]", "uvicorn"])
 
 
 class MATLABEngineManager:
@@ -33,7 +33,7 @@ class MATLABEngineManager:
         """Initialize MATLAB engine with proper error handling."""
         self._ensure_matlab_engine_installed()
         import matlab.engine
-        self._engine = matlab.engine.connect_matlab("MATLAB_3616")
+        self._engine = matlab.engine.start_matlab()
         self._engine.addpath(str(MATLAB_DIR))
     
     def _ensure_matlab_engine_installed(self):
@@ -602,4 +602,8 @@ def get_contents(script_name: str) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport='stdio')
+    import uvicorn
+    
+    # For SSE transport, we need to run as a web server
+    # The FastMCP will handle SSE automatically when run via uvicorn
+    uvicorn.run(mcp.app, host="127.0.0.1", port=8000)
